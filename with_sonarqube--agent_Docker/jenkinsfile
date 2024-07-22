@@ -1,0 +1,70 @@
+pipeline {
+    agent {
+        docker {
+            image 'lequal/sonar-scanner'
+            args '--user root -v /var/run/docker.sock:/var/run/docker.sock -p 8000:8000' // mount Docker socket and map port 8000
+        }
+    }
+    
+    parameters {
+        string(name: 'VM_IP', defaultValue: '34.41.32.9', description: 'IP address of the target VM')
+    }
+    
+    environment {
+        APP_PORT = 8000  // Port on which FastAPI will run
+        SONARQUBE_URL = "http://${params.VM_IP}:9000"  // Replace with your SonarQube server URL
+        SONAR_PROJECT_KEY = "ghost123"  // Replace with your SonarQube project key
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Cetyl/FastAPI-jenkins.git'
+            }
+        }
+        
+        stage('Install dependencies') {
+            steps {
+                sh "apt update"
+                sh "pip install fastapi uvicorn"
+                sh "apt install curl -y"
+                sh "apt-get install psmisc"
+                
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                script {
+                    def deployCmd = "uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} --reload > /dev/null 2>&1 &"
+                    sh deployCmd
+                    sleep 20
+                    def curlCmd = "curl http://${params.VM_IP}:${APP_PORT}/"
+                    sh curlCmd
+                }
+            }
+        }
+        
+        stage('SonarQube analysis') {
+            steps {
+                // Securely retrieve SonarQube token from Jenkins credentials
+                withCredentials([string(credentialsId: 'SonarQube', variable: 'SONAR_AUTH_TOKEN')]) {
+                    // Run SonarQube scanner with credentials
+                    sh """
+                        sonar-scanner \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.host.url=${SONARQUBE_URL} \
+                          -Dsonar.login=${SONAR_AUTH_TOKEN}
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh "killall uvicorn"
+        }
+    }
+}
+
