@@ -1,0 +1,61 @@
+pipeline {
+    agent any
+    
+    environment {
+        APP_PORT = 8000  // Port on which FastAPI will run
+        VM_IP = 'Your vm IP'  // Replace with your VM's IP address
+        SONARQUBE_URL = "http://${VM_IP}:9000"  // Replace with your SonarQube server URL
+        SONAR_AUTH_TOKEN = "sonar token"
+        SONAR_PROJECT_KEY = "sonar project key"  // Replace with your SonarQube project key
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Cetyl/FastAPI-jenkins.git'
+            }
+        }
+        
+        stage('Install dependencies') {
+            steps {
+                sh "sudo apt update"
+                sh "sudo apt install python3-pip -y"
+                sh "sudo pip install fastapi uvicorn"
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                script {
+                    def deployCmd = "uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} --reload > /dev/null 2>&1 &"
+                    sh deployCmd
+                    sleep 20
+                    def curlCmd = "curl http://${VM_IP}:${APP_PORT}/"
+                    sh curlCmd
+                }
+            }
+        }
+        
+        stage('SonarQube analysis') {
+            steps {
+                // Securely retrieve SonarQube token from Jenkins credentials
+                withCredentials([string(credentialsId: 'SonarQube', variable: 'SONAR_AUTH_TOKEN')]) {
+                    // Run SonarQube scanner with credentials
+                    sh """
+                        sonar-scanner \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.host.url=${SONARQUBE_URL} \
+                          -Dsonar.login=${SONAR_AUTH_TOKEN}
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh "killall uvicorn"
+        }
+    }
+}
+
