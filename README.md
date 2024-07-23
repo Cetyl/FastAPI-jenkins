@@ -1,12 +1,21 @@
-# FastAPI App - Hello Web Apps!
- This repository contains a simple FastAPI application that responds with "Hello web apps!".
+# FastAPI Jenkins Pipeline
+ This repository contains a Jenkins pipeline script for building, testing, and deploying a FastAPI application, integrated with SonarQube for code analysis and Docker for containerization.
 
 ## Prerequisites
 Before running the application, ensure you have the following installed:
 
-Python 3.x
+- Python 3.x
 
-pip (Python package installer)
+- pip (Python package installer)
+  
+
+ Before running the Jenkins pipeline, ensure the following prerequisites are met:
+
+- Jenkins with necessary plugins (Docker, SonarQube Scanner)
+  
+- Docker installed on the Jenkins agent
+  
+- SonarQube server accessible and configured 
 
 ## Installation
 
@@ -50,20 +59,23 @@ pipeline {
     
     environment {
         APP_PORT = 8000  // Port on which FastAPI will run
-        VM_IP = 'your_vm_ip_address'  // Replace with your VM's IP address
+        VM_IP = '34.134.188.249'  // Replace with your VM's IP address
+        SONARQUBE_URL = "http://${VM_IP}:9000"  // Replace with your SonarQube server URL
+        SONAR_AUTH_TOKEN = "cd298146cecdbf794787f0b9fd13e949546b4784"
+        SONAR_PROJECT_KEY = "blah"  // Replace with your SonarQube project key
+        DOCKER_IMAGE = "cetyl/jenkins_fastapi-cicd:${BUILD_NUMBER}"
+        REGISTRY_CREDENTIALS = credentials('docker-cred')
     }
     
     stages {
         stage('Checkout') {
             steps {
-                // Checkout your Git repository
-                git branch: 'main', url: 'https://github.com/Cetyl/fastAPI.git'
+                git branch: 'main', url: 'https://github.com/Cetyl/FastAPI-jenkins.git'
             }
         }
         
         stage('Install dependencies') {
             steps {
-                // Install required Python packages
                 sh "sudo apt update"
                 sh "sudo apt install python3-pip -y"
                 sh "sudo pip install fastapi uvicorn"
@@ -72,18 +84,59 @@ pipeline {
         
         stage('Deploy') {
             steps {
-                // Run FastAPI application using uvicorn
                 script {
-                    // Start FastAPI app in background
                     def deployCmd = "uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} --reload > /dev/null 2>&1 &"
                     sh deployCmd
-                    
-                    // Wait for the server to start up
-                    sleep 20  // Adjust as needed based on your application's startup time
-                    
-                    // Verify deployment by making a curl request to the VM
+                    sleep 20
                     def curlCmd = "curl http://${VM_IP}:${APP_PORT}/"
                     sh curlCmd
+                }
+            }
+        }
+        
+        stage('SonarQube analysis') {
+            steps {
+                // Securely retrieve SonarQube token from Jenkins credentials
+                withCredentials([string(credentialsId: 'SonarQube', variable: 'SONAR_AUTH_TOKEN')]) {
+                    // Run SonarQube scanner with credentials
+                    sh """
+                        sonar-scanner \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.host.url=${SONARQUBE_URL} \
+                          -Dsonar.login=${SONAR_AUTH_TOKEN}
+                    """
+                }
+            }
+        }
+
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                    sh 'docker build -t ${DOCKER_IMAGE} .'
+                    def dockerImage = docker.image("${DOCKER_IMAGE}")
+                    docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
+                        dockerImage.push()
+                    }
+                }
+            }
+        }
+
+        stage('Update Deployment File') {
+            environment {
+                GIT_REPO_NAME = "FastAPI-jenkins"
+                GIT_USER_NAME = "Cetyl"
+            }
+            steps {
+                withCredentials([string(credentialsId: 'git', variable: 'GITHUB_TOKEN')]) {
+                    sh '''
+                        git config user.email "rohan.cetyl@gmail.com"
+                        git config user.name "Cetyl"
+                        BUILD_NUMBER=${BUILD_NUMBER}
+                        sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" manifests/deployment.yaml
+                        git add manifests/deployment.yaml
+                        git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                    '''
                 }
             }
         }
@@ -91,31 +144,63 @@ pipeline {
     
     post {
         always {
-            // Clean up or post-processing steps if needed
-            // For example, stopping the server after tests
             sh "killall uvicorn"
         }
     }
 }
+
+                   
 ```
+### Pipeline Overview
+The Jenkins pipeline consists of several stages:
 
-## Jenkins Job Setup
+1. Checkout
 
-1. Create a new Jenkins pipeline job.
-2. Paste the above pipeline script into the job configuration.
-3. Replace your_vm_ip_address with the actual IP address where your Jenkins server is running.
-4. Save the job configuration.
+- Clones the repository from GitHub to the Jenkins workspace.
 
-## Run Jenkins Job
+2. Install dependencies
 
-Trigger the Jenkins job to execute the pipeline. Jenkins will:
+- Updates system packages and installs Python dependencies (fastapi, uvicorn) using pip.
 
--  Checkout the code from this repository.
+3. Deploy
 
--  Install dependencies (Python packages).
+- Starts the FastAPI application using uvicorn on port 8000.
 
--  Deploy the FastAPI application.
+4. SonarQube analysis
 
--  Verify deployment by making a request to the specified IP and port.
+- Performs code analysis using SonarQube, with results reported to the configured SonarQube server.
 
--  Clean up after the job completes.
+5. Build and Push Docker Image
+
+- Builds a Docker image of the FastAPI application and pushes it to Docker Hub using credentials stored securely in Jenkins.
+
+6. Update Deployment File
+
+- Updates the deployment configuration (manifests/deployment.yaml) with the latest Docker image tag and commits changes back to the GitHub repository.
+
+### Usage
+To use this Jenkins pipeline:
+
+1. Configure your Jenkins instance with necessary credentials:
+
+ - - Docker registry credentials (docker-cred) for pushing Docker images.
+  - - SonarQube authentication token (SonarQube credentials).
+
+
+2. Update the pipeline script (Jenkinsfile) as needed:
+
+  - - Replace placeholders such as SONAR_PROJECT_KEY, VM_IP, GIT_REPO_NAME, and GIT_USER_NAME with your specific values.
+
+
+3. Run the Jenkins pipeline manually or trigger it automatically based on your configured triggers (e.g., GitHub webhook).
+
+
+
+
+## Contributing
+- Fork the repository, make changes, and submit a pull request.
+- Issues and feature requests can be submitted through GitHub Issues.
+
+## License
+- This project is licensed under the MIT License.
+
