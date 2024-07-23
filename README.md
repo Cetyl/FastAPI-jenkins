@@ -157,39 +157,39 @@ The Jenkins pipeline consists of several stages:
 
 1. Checkout
 
-- Clones the repository from GitHub to the Jenkins workspace.
+    - Clones the repository from GitHub to the Jenkins workspace.
 
 2. Install dependencies
 
-- Updates system packages and installs Python dependencies (fastapi, uvicorn) using pip.
+    - Updates system packages and installs Python dependencies (fastapi, uvicorn) using pip.
 
 3. Deploy
 
-- Starts the FastAPI application using uvicorn on port 8000.
+    - Starts the FastAPI application using uvicorn on port 8000.
 
 4. SonarQube analysis
 
-- Performs code analysis using SonarQube, with results reported to the configured SonarQube server.
+    - Performs code analysis using SonarQube, with results reported to the configured SonarQube server.
 
 5. Build and Push Docker Image
 
-- Builds a Docker image of the FastAPI application and pushes it to Docker Hub using credentials stored securely in Jenkins.
+    - Builds a Docker image of the FastAPI application and pushes it to Docker Hub using credentials stored securely in Jenkins.
 
 6. Update Deployment File via ArgoCD
 
-- Instead of directly manipulating deployment files, the pipeline triggers ArgoCD for deploying the updated Docker image
+   - Instead of directly manipulating deployment files, the pipeline triggers ArgoCD for deploying the updated Docker image
 
   ## Using ArgoCD for Deployment
 
 1. Install ArgoCD
 
--  Follow the ArgoCD installation guide to set up ArgoCD in your environment.
+ -  Follow the ArgoCD installation guide to set up ArgoCD in your environment.
 
 2. Configure Application in ArgoCD
 
 - Configure your FastAPI application in ArgoCD:
-- - Create an application in ArgoCD that points to your Git repository and Docker image repository.
-- - Configure ArgoCD to automatically sync with changes in your Git repository.
+  - Create an application in ArgoCD that points to your Git repository and Docker image repository.
+  - Configure ArgoCD to automatically sync with changes in your Git repository.
 
 3. Deploy Using ArgoCD
 
@@ -200,13 +200,13 @@ To use this Jenkins pipeline:
 
 1. Configure your Jenkins instance with necessary credentials:
 
- - - Docker registry credentials (docker-cred) for pushing Docker images.
-  - - SonarQube authentication token (SonarQube credentials).
+   - Docker registry credentials (docker-cred) for pushing Docker images.
+   - SonarQube authentication token (SonarQube credentials).
 
 
 2. Update the pipeline script (Jenkinsfile) as needed:
 
-  - - Replace placeholders such as SONAR_PROJECT_KEY, VM_IP, GIT_REPO_NAME, and GIT_USER_NAME with your specific values.
+    - Replace placeholders such as SONAR_PROJECT_KEY, VM_IP, GIT_REPO_NAME, and GIT_USER_NAME with your specific values.
 
 
 3. Run the Jenkins pipeline manually or trigger it automatically based on your configured triggers (e.g., GitHub webhook).
