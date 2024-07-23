@@ -1,4 +1,4 @@
-# FastAPI Jenkins Pipeline
+# FastAPI Jenkins Pipeline with ArgoCD Deployment
  This repository contains a Jenkins pipeline script for building, testing, and deploying a FastAPI application, integrated with SonarQube for code analysis and Docker for containerization.
 
 ## Prerequisites
@@ -15,7 +15,8 @@ Before running the application, ensure you have the following installed:
   
 - Docker installed on the Jenkins agent
   
-- SonarQube server accessible and configured 
+- SonarQube server accessible and configured
+- ArgoCD installed and configured for application deployment
 
 ## Installation
 
@@ -174,9 +175,25 @@ The Jenkins pipeline consists of several stages:
 
 - Builds a Docker image of the FastAPI application and pushes it to Docker Hub using credentials stored securely in Jenkins.
 
-6. Update Deployment File
+6. Update Deployment File via ArgoCD
 
-- Updates the deployment configuration (manifests/deployment.yaml) with the latest Docker image tag and commits changes back to the GitHub repository.
+- Instead of directly manipulating deployment files, the pipeline triggers ArgoCD for deploying the updated Docker image
+
+  ## Using ArgoCD for Deployment
+
+1. Install ArgoCD
+
+-  Follow the ArgoCD installation guide to set up ArgoCD in your environment.
+
+2. Configure Application in ArgoCD
+
+- Configure your FastAPI application in ArgoCD:
+- - Create an application in ArgoCD that points to your Git repository and Docker image repository.
+- - Configure ArgoCD to automatically sync with changes in your Git repository.
+
+3. Deploy Using ArgoCD
+
+- Once the Jenkins pipeline has successfully built and pushed the Docker image, ArgoCD will automatically detect the new image version and deploy it to your environment.
 
 ### Usage
 To use this Jenkins pipeline:
