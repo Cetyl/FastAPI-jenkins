@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: fast-api
-        image: cetyl/jenkins_fastapi-cicd:replaceImageTag
+        image: cetyl/jenkins_fastapi-cicd:2
         ports:
         - containerPort: 80
