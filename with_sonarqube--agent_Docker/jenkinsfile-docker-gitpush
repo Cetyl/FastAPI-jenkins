@@ -1,0 +1,104 @@
+pipeline {
+    agent {
+        docker {
+            image 'lequal/sonar-scanner'  // Replace with your Jenkins Docker image
+            args '--user root -v /var/run/docker.sock:/var/run/docker.sock -p 8000:8000'  // Mount Docker socket if needed
+        }
+    }
+    
+    parameters {
+        string(name: 'VM_IP', defaultValue: '34.134.188.249', description: 'IP address of the target VM')
+    }
+    
+    environment {
+        APP_PORT = 8000  // Port on which FastAPI will run
+        SONARQUBE_URL = "http://${params.VM_IP}:9000"  // Replace with your SonarQube server URL
+        SONAR_PROJECT_KEY = "ghost123"  // Replace with your SonarQube project key
+        GIT_REPO_NAME = "FastAPI-jenkins"
+        GIT_USER_NAME = "Cetyl"
+        DOCKER_IMAGE = "cetyl/jenkins_fastapi-cicd:${BUILD_NUMBER}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout the repository into the Jenkins workspace
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: 'https://github.com/Cetyl/FastAPI-jenkins.git']]])
+            }
+        }
+        
+        stage('Install dependencies') {
+            steps {
+                sh "apt update"
+                sh "pip install fastapi uvicorn"
+                sh "apt install curl -y"
+                sh "apt-get install psmisc"
+                sh "apt install docker.io -y"
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                script {
+                    def deployCmd = "uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} --reload > /dev/null 2>&1 &"
+                    sh deployCmd
+                    sleep 20
+                    def curlCmd = "curl http://${params.VM_IP}:${APP_PORT}/"
+                    sh curlCmd
+                }
+            }
+        }
+        
+        stage('SonarQube analysis') {
+            steps {
+                withCredentials([string(credentialsId: 'SonarQube', variable: 'SONAR_AUTH_TOKEN')]) {
+                    sh """
+                        sonar-scanner \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.host.url=${SONARQUBE_URL} \
+                          -Dsonar.login=${SONAR_AUTH_TOKEN}
+                    """
+                }
+            }
+        }
+
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                    sh "docker build -t ${DOCKER_IMAGE} ."
+                    def dockerImage = docker.image("${DOCKER_IMAGE}")
+                    docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
+                        dockerImage.push()
+                    }
+                }
+            }
+        }
+
+        stage('Update Deployment File') {
+            steps {
+                // Adjust path based on where repository is checked out inside the Docker container
+                dir('/var/jenkins_home/workspace/FastAPI-jenkins') {
+                    withCredentials([string(credentialsId: 'git', variable: 'GITHUB_TOKEN')]) {
+                        script {
+                            sh """
+                                git config user.email "rohan.cetyl@gmail.com"
+                                git config user.name "${GIT_USER_NAME}"
+                                BUILD_NUMBER=${BUILD_NUMBER}
+                                sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" manifests/deployment.yaml
+                                git add manifests/deployment.yaml
+                                git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                                git push https://github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                            """
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh "killall uvicorn"
+        }
+    }
+}
